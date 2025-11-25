@@ -1,0 +1,95 @@
+# 출력을 원할 경우 print() 함수 활용
+# 예시) print(df.head())
+
+# setwd(), getwd() 등 작업 폴더 설정 불필요
+# 파일 경로 상 내부 드라이브 경로(C: 등) 접근 불가
+library(dplyr)
+library(caret)
+library(randomForest)
+library(xgboost)
+train = read.csv("data/customer_train.csv")
+test = read.csv("data/customer_test.csv")
+rdata <- train
+rdata2 <- test
+
+str(rdata)
+#colSums(is.na(rdata))
+set.seed(42)
+data <- rdata %>% na.omit()
+data <- data[,-1]
+
+idx <- sample(1:nrow(data), nrow(data)*0.8)
+train_data <- data[idx,]
+test_data <- data[-idx,]
+
+md <- randomForest(총구매액~., data=train_data, ntree=300)
+pred <- predict(md, newdata = test_data,
+							 type="response")
+rmse <- (mean((pred-test_data$총구매액)^2))^(1/2)
+rmse <- round(rmse,3)
+print(rmse)
+#1776.19
+
+
+#하이퍼파라미터
+
+ctrl <- trainControl(method="cv", number = 3)
+tune_grid <- expand.grid(mtry=c(2,3,4))
+
+md_tune <-train(총구매액~.,
+							 data=train_data,
+							 method="rf",
+							 metric="RMSE",
+							 trControl=ctrl,
+							 tundGrid=tune_grid,
+							 ntree=300)
+
+pred_tune <- predict(md_tune, newdata = test_data)
+rmse_tune <- (mean((pred_tune-test_data$총구매액)^2))^(1/2)
+rmse_tune <- round(rmse_tune,3)
+print(rmse_tune)
+#1680.269
+
+#str(rdata2)
+#print(colSums(is.na(rdata2)))
+data2 <- rdata2 %>% na.omit()
+
+pred_result <- predict(md_tune, newdata = data2[,-1])
+result <- data.frame(pred=pred_result)
+write.csv(result,"result.csv", row.names=FALSE)
+print(result)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 사용자 코딩
+
+# 답안 제출 참고
+# 아래 코드는 예시이며 변수명 등 개인별로 변경하여 활용
+# write.csv(data.frame변수,"result.csv",row.names = FALSE)
