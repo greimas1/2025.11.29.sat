@@ -1,0 +1,32 @@
+help()# 출력을 원할 경우 print() 함수 활용
+help(dplyr)
+# 예시) print(df.head())
+#dir(dplyr)
+# setwd(), getwd() 등 작업 폴더 설정 불필요
+# 파일 경로 상 내부 드라이브 경로(C: 등) 접근 불가
+library(dplyr)
+df = read.csv("data/bcc.csv")
+rdata <- df
+
+
+# 사용자 코딩
+
+#str(rdata)
+#print(colSums(is.na(rdata)))
+
+g1 <- rdata %>% filter(Classification==1) %>%
+mutate(logR=log(Resistin)) %>% pull(logR)
+
+g2 <- rdata %>% filter(Classification==2) %>%
+mutate(logR=log(Resistin)) %>% pull(logR)
+
+var1 <- var(g1)
+var2 <- var(g2)
+
+f_stat <- ifelse(var1>var2, var1/var2, var2/var1)
+#print(round(f_stat,3))
+#1.348
+
+t_result <- t.test(g1, g2, var.equal=TRUE)
+#print(round(t_result$p.value,3))
+#0.003
