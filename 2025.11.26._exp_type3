@@ -40,6 +40,50 @@ rmse <- round((mean((pred-test$Temp)^2))^(1/2),3)
 print(rmse)
 
 
+-------------------------------------------------------------# 코드 실행 시 제공 라이브러리 리스트 확인 가능
+
+as.data.frame(installed.packages()[,c(3:4)])
+
+# R 제공 라이브러리 수 : 427개
+# updated 2025.11.07, 제11회 빅데이터분석기사 실기 버전
+library(dplyr)
+
+rdata <- airquality
+#str(rdata)
+#print(colSums(is.na(rdata)))
+
+
+data <- rdata %>% na.omit() %>% select(1:4)
+
+#str(data)
+
+md <- lm(Temp~., data=data)
+#print(summary(md)$coefficients[-1,4]<0.05)
+
+#Ozone
+
+t_result <- t.test(data$Solar.R, data$Wind)
+result2 <- round(t_result$p.value,3)
+#print(result2)
+#0
+
+cor_coeff <- cor(data$Solar.R, data$Wind, method="pearson")
+result3 <- round(cor_coeff)
+#print(result3)
+#0
+
+idx <- sample(1:nrow(data), nrow(data)*0.8)
+train <- data[idx,]
+test <- data[-idx,]
+
+md2 <- lm(Temp~., data=train)
+pred <- predict(md2, newdata = test)
+rmse <- round((mean((pred-test$Temp)^2))^(1/2),3)
+print(rmse)
+#5.741
+
+
+
 
 
 
