@@ -1,0 +1,211 @@
+# 출력을 원할 경우 print() 함수 활용
+# 예시) print(df.head())
+
+# setwd(), getwd() 등 작업 폴더 설정 불필요
+# 파일 경로 상 내부 드라이브 경로(C: 등) 접근 불가
+library(dplyr)
+library(randomForest)
+library(caret)
+train = read.csv("data/customer_train.csv")
+test = read.csv("data/customer_test.csv")
+
+rdata <- train
+#str(rdata)
+#print(colSums(is.na(rdata)))
+
+rdata$환불금액 <- ifelse(is.na(rdata$환불금액),
+										0, rdata$환불금액)
+
+rdata$주구매상품 <- as.factor(rdata$주구매상품)
+rdata$주구매지점 <- as.factor(rdata$주구매지점)
+
+set.seed(42)
+idx <- sample(1:nrow(rdata), nrow(rdata)*0.8)
+train_data <- rdata[idx, -1]
+test_data <- rdata[-idx, -1]
+
+md <- randomForest(총구매액~., data = train_data, ntree=300)
+pred <- predict(md, newdata = test_data, type = "response")
+rmse <- (mean((pred-test_data$총구매액)^2))^(1/2)
+rmse <- round(rmse,3)
+print(rmse,3)
+
+#1051
+
+#하이퍼파라미터 튜닝
+set.seed(42)
+ctrl <- trainControl(method = "cv", number = 3)
+tune_grid <- expand.grid(mtry=c(2,3,4))
+
+md_tune <- train(총구매액~., 
+								 data = train_data,
+								trControl = ctrl,
+								tuneGrid = tune_grid,
+								ntree = 300)
+
+pred_tune <- predict(md_tune,
+										newdata = test_data)
+
+rmse_tune <- (mean((pred_tune-test_data$총구매액)^2))^(1/2)
+rmse_tune <- round(rmse_tune,3)
+print(rmse_tune,3)
+#1238
+
+#데이터 제출
+rdata2 <- test
+str(rdata2)
+md2 <- randomForest(총구매액~., 
+										data = rdata[,-1],
+										ntree=300)
+pred2 <- predict(md2, 
+								 newdata = rdata2[,-1],
+								 type = "response")
+
+df <- data.frame(pred=pred2)
+write.csv(df, "result.csv", row.names=FALSE)
+
+----------------------------------------------------------------------------------------------------------------------
+핵심 문제(요약)
+
+train() 호출에 method="rf" 가 빠져 있음 → caret::train은 어떤 알고리즘인지 몰라 에러/원치 않는 동작 발생 가능.
+
+학습/제출(test) 데이터의 factor 수준(levels) 동기화가 안 되어 있음 → 예측 시 오류 또는 NA가 나올 수 있음.
+
+print(rmse,3) — print에 두 번째 인자 의미 없음(잘못된 사용). round()로 먼저 처리하고 cat() 또는 print()로 출력해야 함.
+
+전체 데이터로 학습(md2 <- randomForest(..., data = rdata[,-1]) 후 제출 데이터 전처리(rdata2)가 동기화되지 않음(NA처리·factor 처리 필요).
+
+시간 제한(60s)을 고려하면 ntree=300은 느릴 수 있음 — ntree=100 권장(속도/성능 절충).
+
+caret::train 호출 시 metric="RMSE" 지정 바람(회귀일 때).
+
+수정된 코드 (바로 붙여 실행 가능 — R3.6 호환)
+library(dplyr)
+library(randomForest)
+library(caret)
+
+# 데이터 읽기
+train = read.csv("data/customer_train.csv", fileEncoding = "EUC-KR", stringsAsFactors = FALSE)
+test  = read.csv("data/customer_test.csv",  fileEncoding = "EUC-KR", stringsAsFactors = FALSE)
+
+rdata <- train
+
+# 1) 결측 처리 (학습/제출 모두 동일하게 처리)
+rdata$환불금액 <- ifelse(is.na(rdata$환불금액), 0, rdata$환불금액)
+
+# 2) 범주형(요인) 변수로 변환 — 학습 데이터 수준을 기준으로 제출 데이터도 맞춰줘야 함
+rdata$주구매상품 <- as.factor(rdata$주구매상품)
+rdata$주구매지점 <- as.factor(rdata$주구매지점)
+
+# 제출(test) 데이터에도 동일한 전처리 적용
+rdata2 <- test
+rdata2$환불금액 <- ifelse(is.na(rdata2$환불금액), 0, rdata2$환불금액)
+
+# 주구매상품/주구매지점의 수준을 학습 데이터 수준으로 고정
+rdata2$주구매상품 <- factor(rdata2$주구매상품, levels = levels(rdata$주구매상품))
+rdata2$주구매지점 <- factor(rdata2$주구매지점, levels = levels(rdata$주구매지점))
+
+# (선택) 만약 수준이 test에만 있는 값이 있으면 NA가 되므로 적절히 처리
+# 예: 새 수준을 "기타"로 치환하거나 NA를 train의 최빈값으로 채울 수 있음.
+
+# 3) 학습/검증 분할 — 첫 열이 ID라고 가정하면 -1로 제거. (이 부분은 파일 구조에 따라 수정 필요)
+set.seed(42)
+idx <- sample(1:nrow(rdata), floor(nrow(rdata)*0.8))
+
+train_data <- rdata[idx, ]
+test_data  <- rdata[-idx, ]
+
+# 만약 ID가 첫열이면 제거해서 모델에 넣기
+# (ID 컬럼 이름이 'id'라면 더 안전: select(-id) 사용)
+train_data_model <- train_data[ , -1]  # 예: ID 제외
+test_data_model  <- test_data[ , -1]
+
+# 4) 기본 랜덤포레스트 (빠르게 확인용: ntree=100 권장 — 300은 느릴 수 있음)
+set.seed(42)
+md <- randomForest(총구매액 ~ ., data = train_data_model, ntree = 100)
+
+pred <- predict(md, newdata = test_data_model, type = "response")
+rmse <- sqrt(mean((pred - test_data_model$총구매액)^2))
+rmse <- round(rmse, 3)
+cat("기본 RF RMSE:", rmse, "\n")
+
+# 5) caret을 이용한 하이퍼파라미터 튜닝 (method="rf" 필수)
+set.seed(42)
+ctrl <- trainControl(method = "cv", number = 3)
+tune_grid <- expand.grid(mtry = c(2, 3, 4))
+
+md_tune <- train(총구매액 ~ .,
+                 data = train_data_model,
+                 method = "rf",            # <--- 중요
+                 metric = "RMSE",
+                 trControl = ctrl,
+                 tuneGrid = tune_grid,
+                 ntree = 100)              # 시간제한 고려
+
+pred_tune <- predict(md_tune, newdata = test_data_model)
+rmse_tune <- sqrt(mean((pred_tune - test_data_model$총구매액)^2))
+rmse_tune <- round(rmse_tune, 3)
+cat("튜닝 RF RMSE:", rmse_tune, "\n")
+
+# 6) 전체 학습 데이터로 모델 생성 후 제출파일(predictions) 생성
+# 전체 학습데이터에서 ID 제거(가정: 첫열이 ID)
+full_train_model <- rdata[ , -1]
+
+set.seed(42)
+md2 <- randomForest(총구매액 ~ ., data = full_train_model, ntree = 100)
+
+# 제출용 newdata 준비 — 제출파일에도 ID가 첫열이라 가정
+submit_newdata <- rdata2[ , -1]  # predictors only
+pred2 <- predict(md2, newdata = submit_newdata, type = "response")
+
+# 제출파일: ID와 예측값 함께 저장 (ID가 첫열이라는 가정)
+if ("ID" %in% names(rdata2) | "id" %in% names(rdata2) | "Id" %in% names(rdata2)) {
+  # 가능한 ID 컬럼 이름 체크
+  id_name <- names(rdata2)[1]  # 안전하게는 정확한 컬럼명 사용 권장
+  df <- data.frame(id = rdata2[[1]], 총구매액 = pred2)
+} else {
+  df <- data.frame(pred = pred2)
+}
+
+write.csv(df, "result.csv", row.names = FALSE)
+cat("result.csv 생성 완료\n")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 사용자 코딩
+
+# 답안 제출 참고
+# 아래 코드는 예시이며 변수명 등 개인별로 변경하여 활용
+# write.csv(data.frame변수,"result.csv",row.names = FALSE)
