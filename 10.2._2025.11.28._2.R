@@ -1,7 +1,6 @@
 library(dplyr)
 library(randomForest)
 library(caret)
-library(xgboost)
 
 rdata <- read.csv("gas.csv")
 
@@ -31,7 +30,6 @@ md2 <- randomForest(gas~., data = train, ntree = 300)
 pred2 <- predict(md2, newdata = test, type = "response")
 mae <- round(mean(abs(pred2-test$gas)),3)
 print(mae)
-#32.193
 #31.824
 
 
@@ -42,7 +40,7 @@ ctrl <- trainControl(method="cv", number = 3)
 
 md_tune <- train(gas~., data = train,
                  method = "rf",
-                 metric = "MAE",
+                 metric = "RMSE",
                  trControl = ctrl,
                  tuneGrid = tune_grid,
                  ntree=300)
@@ -54,7 +52,7 @@ mae_tune <- mean(abs(pred_tune-test$gas))
 mae_tune <- round(mae_tune,3)
 print(mae_tune)
 #20.516
-#20.238
+
 
 result <- data.frame(pred = pred_tune)
 write.csv(result,"result20251128.csv", row.names=FALSE)
